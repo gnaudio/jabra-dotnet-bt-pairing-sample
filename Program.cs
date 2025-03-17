@@ -37,7 +37,7 @@ internal class Program
         //Subscribe to SDK log events.
         jabraSdk.LogEvents.Subscribe((log) =>
         {
-            if (log.Level == LogLevel.Error) Console.WriteLine(log.ToString());
+            if (log.Level == LogLevel.Error) Console.WriteLine("Jabra SDK4 exception: " + log.ToString());
             //Ignore info, warning, and debug log messages.
         });
 
@@ -128,10 +128,12 @@ internal class Program
             await activeDongle.PairAndConnectTo(scanEntries[deviceIndexInList], TimeSpan.FromSeconds(30));
         } catch (Exception ex)
         {
+            // Exceptions can happen for example for third party headsets at the moment. They connect correctly to BT audio but don't 
+            // connect to Jabra proprietary protocol(s), hence are hanging. Will be fixed with future update to SDK. 
             Console.WriteLine($"Exception during pairing: {ex.Message}");
             success = false; 
         }
-        if (!success) { activeDongle.ConnectTo(scanEntries[deviceIndexInList].BluetoothAddress);  }
+        // if (!success) { activeDongle.ConnectTo(scanEntries[deviceIndexInList].BluetoothAddress);  }
         Console.WriteLine($"Pairing successfull within timeout: {success}");
         ListAllPairingsAsync();
     }
@@ -146,7 +148,14 @@ internal class Program
         } else
         {
             Console.WriteLine($"Connecting to {pairingList[deviceIndexInList].BluetoothName}");
-            await activeDongle.ConnectTo(pairingList[deviceIndexInList]);
+            try
+            {
+                await activeDongle.ConnectTo(pairingList[deviceIndexInList],TimeSpan.FromSeconds(15));
+            } catch (Exception ex)
+            {
+                Console.WriteLine($"Exception while trying to connect to {pairingList[deviceIndexInList].BluetoothName}: {ex.Message}");
+            }
+            
             await ListAllPairingsAsync();
         }
     }
