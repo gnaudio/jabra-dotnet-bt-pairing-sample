@@ -7,6 +7,7 @@ using Jabra.NET.Sdk.Properties;
 internal class Program
 {
     public static BluetoothPairingFactory? btPairingFactory;
+    public static IBluetoothDongle? activeDongle;
 
     public static async Task Main()
     {
@@ -44,6 +45,51 @@ internal class Program
         Task.Delay(-1).Wait();
     }
 
+    static async Task ListAllPairingsAsync()
+    {
+        IReadOnlyList<IPairingListEntry> pairingList = await activeDongle.GetPairingList();
+        Console.WriteLine($"Current pairing list for {activeDongle.Name}:");
+
+        foreach (var entry in pairingList)
+        {
+            Console.WriteLine($"> {entry.BluetoothName}, connected: {entry.ConnectionStatus.ToString()}");
+        }
+    } 
+
+    static async Task RemoveAllPairingsAsync()
+    {
+        IReadOnlyList<IPairingListEntry> pairingList = await activeDongle.GetPairingList();
+        bool success = true;
+        Console.WriteLine($"Trying to remove all pairings for {activeDongle.Name}");
+        foreach (var entry in pairingList)
+        {
+            try
+            {
+                Console.WriteLine($"> Removing {entry.BluetoothName}");
+                if (!(entry.ConnectionStatus == BluetoothConnectionStatus.NONE) || (entry.ConnectionStatus == BluetoothConnectionStatus.DISCONNECTED))
+                {
+                    // Disconnect from device, if connection status is not NONE or DISCONNECTED. 
+                    await activeDongle.DisconnectFrom(entry);
+                }
+                await activeDongle.Unpair(entry);
+                Console.WriteLine($"> Successfully removed {entry.BluetoothName}");
+            }
+            catch (Exception ex)
+            {
+                // An exception happened while trying to unpair. One common reason is if the dongle is
+                // currently connected to the device you're trying to unpair. To avoid this, always disconnect
+                // before attempting to unpair. 
+                Console.WriteLine($"Exception while removing pairing: {ex.Message}");
+                success = false;
+            }
+
+        }
+        Console.WriteLine($"All pairings for {activeDongle.Name} successfully removed: {success}");
+        
+    }
+
+
+
     static void SetupDeviceListeners(IApi jabraSdk)
     {
         //Subscribe to Jabra devices being attached/detected by the SDK
@@ -56,31 +102,16 @@ internal class Program
             {
                 if (await btPairingFactory.CreateBluetoothDongle(device) is IBluetoothDongle dongle)
                 {
-                    // The IDevice is a dongle...
-                    IReadOnlyList<IPairingListEntry> pairingList = await dongle.GetPairingList();
-                    Console.WriteLine($"{device.Name} pairing list: ");
-                    int iterator = 0;
-                    foreach (var entry in pairingList)
-                    {
-                     
-                            Console.WriteLine($"Pairinglist entry #{iterator}: {entry.BluetoothName}, connected: {entry.ConnectionStatus.ToString()}");
-                            try
-                            {
-                                await dongle.Unpair(entry);
-                            }
-                            catch (Exception ex)
-                            {
-                                // An exception happened while trying to unpair. One common reason is if the dongle is
-                                // currently connected to the device you're trying to unpair. To avoid this, always disconnect
-                                // before attempting to unpair. 
-                                Console.WriteLine($"Exception while unpairing: {ex.Message}");
-                            }
-
-
-                        }
-                    }
+                    // IDevice device is a dongle...
+                    activeDongle = dongle;
+                    Console.WriteLine($"Active dongle is: {dongle.Name}");
+                    
+                    await ListAllPairingsAsync();
+                    await RemoveAllPairingsAsync();
+                    await ListAllPairingsAsync();
                 }
             }
+            
         });
 
         //Subscribe to Jabra devices being detached/rebooted
