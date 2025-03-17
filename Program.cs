@@ -9,9 +9,22 @@ internal class Program
     public static BluetoothPairingFactory? btPairingFactory;
     public static IBluetoothDongle? activeDongle;
 
+    // Latest list of scan entries when searching for devices
+    public static List<IScanEntry> scanEntries = [];
+    // Latest list of paired devices
+    public static IReadOnlyList<IPairingListEntry> pairingList = [];
+
+    public static bool keypress_a_to_z_means_pairing = false; 
+
     public static async Task Main()
     {
-        Console.WriteLine("Jabra .NET SDK Bluetooth Pairing Sample app starting. Press ctrl+c or close the window to end.\n");
+        // Writing available demo commands to console 
+        PrintMenu();
+
+        // Start the key press listener in a separate task
+        var keyPressTask = Task.Run(() => ListenForKeyPress(), CancellationToken.None);
+
+        
 
         //Initialize the core SDK. Recommended to use Init.InitManualSdk(...) (not Init.Init(...)) to allow setup of listeners before the SDK starts discovering devices.
         var config = new Config(
@@ -36,9 +49,6 @@ internal class Program
 
         // Enable the SDK's device discovery AFTER listeners and other necessary infrastructure is setup.
         await jabraSdk.Start();
-
-        
-
         Console.WriteLine("Now listening for Jabra devices...\n");
 
         //Keep the sample app running until actively closed.
@@ -47,12 +57,16 @@ internal class Program
 
     static async Task ListAllPairingsAsync()
     {
-        IReadOnlyList<IPairingListEntry> pairingList = await activeDongle.GetPairingList();
-        Console.WriteLine($"Current pairing list for {activeDongle.Name}:");
+        // Keypress a to z means try to connect/disconnect selected device
+        keypress_a_to_z_means_pairing = false; 
 
+        pairingList = await activeDongle.GetPairingList();
+        Console.WriteLine($"Current pairing list for {activeDongle.Name}: ({pairingList.Count} entries)");
+        int i = 0;
         foreach (var entry in pairingList)
         {
-            Console.WriteLine($"> {entry.BluetoothName}, connected: {entry.ConnectionStatus.ToString()}");
+            Console.WriteLine($"> {entry.BluetoothName}, connected: {entry.ConnectionStatus.ToString()} - to connect/disconnect press key '{(char)(i + 97)}'");
+            i++;
         }
     } 
 
@@ -88,15 +102,60 @@ internal class Program
         
     }
 
+    static async Task StartBTPairingProcess()
+    {
+        // Keypress a to z in demo app switches to initiate pairing of selected device
+        keypress_a_to_z_means_pairing = true;
+        
+        // Init scanEntries
+        scanEntries = [];
+        // Default scan duration is 20 seconds. Scan will stop also once a pairing is initiated. 
+        activeDongle.ScanForDevicesInPairingMode().Subscribe(entry =>
+        {
+            Console.WriteLine($"> Found device {entry.BluetoothName} - to pair press key '{(char)(scanEntries.Count + 97)}'");
+            scanEntries.Add(entry);
+        });
+    }
 
+    static async Task PairWithDevice(int deviceIndexInList)
+    {
+        Console.WriteLine($"Attempting to pair dongle {activeDongle.Name} with {scanEntries[deviceIndexInList].BluetoothName}");
+        // Try to pair - exception will be thrown if pairing is not successfull within timeout indicated. Pairing likely still works after that
+        // but it is recommended to set a generous timeout (e.g. 30 seconds) to avoid exceptions due to slow pairing. 
+        bool success = true;
+        try
+        {
+            await activeDongle.PairAndConnectTo(scanEntries[deviceIndexInList], TimeSpan.FromSeconds(30));
+        } catch (Exception ex)
+        {
+            Console.WriteLine($"Exception during pairing: {ex.Message}");
+            success = false; 
+        }
+        if (!success) { activeDongle.ConnectTo(scanEntries[deviceIndexInList].BluetoothAddress);  }
+        Console.WriteLine($"Pairing successfull within timeout: {success}");
+        ListAllPairingsAsync();
+    }
+
+    static async Task Connect_Disconnect(int deviceIndexInList)
+    {
+        if ((pairingList[deviceIndexInList].ConnectionStatus == BluetoothConnectionStatus.CONNECTED) || (pairingList[deviceIndexInList].ConnectionStatus == BluetoothConnectionStatus.NONE))
+        {
+            Console.WriteLine($"Disconnecting from {pairingList[deviceIndexInList].BluetoothName}");
+            await activeDongle.DisconnectFrom(pairingList[deviceIndexInList]);
+            await ListAllPairingsAsync();
+        } else
+        {
+            Console.WriteLine($"Connecting to {pairingList[deviceIndexInList].BluetoothName}");
+            await activeDongle.ConnectTo(pairingList[deviceIndexInList]);
+            await ListAllPairingsAsync();
+        }
+    }
 
     static void SetupDeviceListeners(IApi jabraSdk)
     {
         //Subscribe to Jabra devices being attached/detected by the SDK
         jabraSdk.DeviceAdded.Subscribe(async (IDevice device) =>
         {
-            Console.WriteLine($"> Device attached/detected: {device.Name} (Product ID: {device.ProductId}, Serial #: {device.SerialNumber})");
-
             // This sample is supported for Jabra Link 380 and Jabra Link 390 BT dongles
             if ((device.Name == "Jabra Link 380") || (device.Name == "Jabra Link 390"))
             {
@@ -104,20 +163,78 @@ internal class Program
                 {
                     // IDevice device is a dongle...
                     activeDongle = dongle;
-                    Console.WriteLine($"Active dongle is: {dongle.Name}");
-                    
-                    await ListAllPairingsAsync();
-                    await RemoveAllPairingsAsync();
+                    Console.WriteLine($"Found Jabra BT dongle: {dongle.Name}");
                     await ListAllPairingsAsync();
                 }
             }
             
         });
+    }
 
-        //Subscribe to Jabra devices being detached/rebooted
-        jabraSdk.DeviceRemoved.Subscribe((IDevice device) =>
+    /************************************
+    ** Methods for setting up demo app **
+    ************************************/
+    static void PrintMenu()
+    {
+        Console.WriteLine("Jabra .NET SDK Bluetooth Pairing Sample app starting. Press ctrl+c or close the window to end.\n");
+        Console.WriteLine("----------");
+        Console.WriteLine("Available commands when a Jabra Link 380/390 BT dongle is detected:");
+        Console.WriteLine("1: List paired devices");
+        Console.WriteLine("2: Remove all paired devices");
+        Console.WriteLine("3: Pair new BT device");
+        Console.WriteLine("----------");
+    }
+    async static void HandleKeyPress(char keyChar)
+    {
+        switch (keyChar)
         {
-            Console.WriteLine($"< Device detached {device.Name} (Product ID: {device.ProductId}, Serial #: {device.SerialNumber})");
-        });
+            case '1':
+                // List all devices currently paired with the BT dongle
+                await ListAllPairingsAsync();
+                break;
+            case '2':
+                // Remove all devices currently paired with the BT dongle
+                await RemoveAllPairingsAsync();
+                break;
+            case '3':
+                // Put dongle into pairing mode and wait for nearby BT devices to be found. 
+                Console.WriteLine($"Setting dongle {activeDongle.Name} to search for nearby BT devices. Make sure to put your device in pairing mode.");
+                StartBTPairingProcess();
+                break;
+            
+            default:
+                // if keypress was between 'a' and 'z', treat it as pairing to one of the listed devices. 'a' is ascii 97. 
+                if ((((int)keyChar) > 96) && (((int)keyChar) < 123))
+                {
+                    if (keypress_a_to_z_means_pairing)
+                    {
+                        PairWithDevice((int)keyChar - 97);
+                    }
+                    else
+                    {
+                        Connect_Disconnect((int)keyChar - 97); 
+
+                    }
+
+                }
+                break;
+        }
+    }
+
+    static void ListenForKeyPress()
+    {
+        while (true)
+        {
+            if (Console.KeyAvailable) // Check if a key press is available
+            {
+                var keyInfo = Console.ReadKey(intercept: true);
+                HandleKeyPress(keyInfo.KeyChar);
+            }
+            else
+            {
+                // Sleep briefly to avoid busy waiting
+                Thread.Sleep(50);
+            }
+        }
     }
 }
