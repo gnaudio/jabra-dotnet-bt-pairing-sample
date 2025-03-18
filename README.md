@@ -1,1 +1,3 @@
 # jabra-bt-pairing-sample
+
+...
