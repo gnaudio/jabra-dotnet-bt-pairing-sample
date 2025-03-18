@@ -125,7 +125,7 @@ internal class Program
         bool success = true;
         try
         {
-            await activeDongle.PairAndConnectTo(scanEntries[deviceIndexInList], TimeSpan.FromSeconds(30));
+            await activeDongle.PairAndConnectTo(scanEntries[deviceIndexInList]);// , TimeSpan.FromSeconds(30));
         } catch (Exception ex)
         {
             // Exceptions can happen for example for third party headsets at the moment. They connect correctly to BT audio but don't 
