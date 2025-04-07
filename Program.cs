@@ -1,20 +1,20 @@
 ﻿using System.Reactive.Linq;
-using Jabra.NET.Sdk.BluetoothPairing;
+using Jabra.NET.Sdk.DevicePairing;
 using Jabra.NET.Sdk.Core;
 using Jabra.NET.Sdk.Core.Types;
-using Jabra.NET.Sdk.Properties;
 
 internal class Program
 {
-    public static BluetoothPairingFactory? btPairingFactory;
+    public static BluetoothModule? btModule;
     public static IBluetoothDongle? activeDongle;
 
     // Latest list of scan entries when searching for devices
     public static List<IScanEntry> scanEntries = [];
+    
     // Latest list of paired devices
     public static IReadOnlyList<IPairingListEntry> pairingList = [];
 
-    public static bool keypress_a_to_z_means_pairing = false; 
+    public static bool keypress_a_to_j_means_pairing = false; 
 
     public static async Task Main()
     {
@@ -24,9 +24,7 @@ internal class Program
         // Start the key press listener in a separate task
         var keyPressTask = Task.Run(() => ListenForKeyPress(), CancellationToken.None);
 
-        
-
-        //Initialize the core SDK. Recommended to use Init.InitManualSdk(...) (not Init.Init(...)) to allow setup of listeners before the SDK starts discovering devices.
+        //Initialize the core Jabra SDK. Recommended to use Init.InitManualSdk(...) (not Init.Init(...)) to allow setup of listeners before the SDK starts discovering devices.
         var config = new Config(
             partnerKey: "get-partner-key-at-developer.jabra.com",
             appId: "JabraDotNETBluetoothPairingSample",
@@ -37,12 +35,12 @@ internal class Program
         //Subscribe to SDK log events.
         jabraSdk.LogEvents.Subscribe((log) =>
         {
-            if (log.Level == LogLevel.Error) Console.WriteLine("Jabra SDK4 exception: " + log.ToString());
+            if (log.Level == LogLevel.Error) Console.WriteLine("Jabra .NET SDK exception: " + log.ToString());
             //Ignore info, warning, and debug log messages.
         });
 
-        // Create a BluetoothPairingFactory
-        btPairingFactory = new BluetoothPairingFactory(jabraSdk);
+        // Create a BluetoothModule to access BT pairing and connection APIs. 
+        btModule = new BluetoothModule(jabraSdk);
 
         //Setup listeners for Jabra devices being attached/detected.
         SetupDeviceListeners(jabraSdk);
@@ -57,8 +55,8 @@ internal class Program
 
     static async Task ListAllPairingsAsync()
     {
-        // Keypress a to z means try to connect/disconnect selected device
-        keypress_a_to_z_means_pairing = false; 
+        // Keypress a to j means try to connect/disconnect selected device
+        keypress_a_to_j_means_pairing = false; 
 
         pairingList = await activeDongle.GetPairingList();
         Console.WriteLine($"Current pairing list for {activeDongle.Name}: ({pairingList.Count} entries)");
@@ -105,16 +103,32 @@ internal class Program
     static async Task StartBTPairingProcess()
     {
         // Keypress a to z in demo app switches to initiate pairing of selected device
-        keypress_a_to_z_means_pairing = true;
+        keypress_a_to_j_means_pairing = true;
         
         // Init scanEntries
         scanEntries = [];
-        // Default scan duration is 20 seconds. Scan will stop also once a pairing is initiated. 
-        activeDongle.ScanForDevicesInPairingMode().Subscribe(entry =>
+        
+        // Scan for BT devices in pairing mode nearby for 30 seconds. Scan will stop also once a pairing is initiated. 
+        activeDongle.ScanForDevicesInPairingMode(TimeSpan.FromSeconds(30)).Subscribe(entry =>
         {
             Console.WriteLine($"> Found device {entry.BluetoothName} - to pair press key '{(char)(scanEntries.Count + 97)}'");
             scanEntries.Add(entry);
+        }, error =>
+        {
+            // In case of unexpected error while scanning for devices. 
+            Console.WriteLine($"An error occurred during scanning for devices: {error.Message}");
+        }, () =>
+        {
+            // Scanning for devices in pairing mode completed. This can be either because the timespan expired, the scan was manually stopped or a pairing with one of the found devices was initiated. 
+            Console.WriteLine("Scanning for BT devices completed.");
         });
+        Console.WriteLine("Scanning for available BT devices... Press 'q' to stop scanning");
+    }
+
+    static async Task StopScanning()
+    {
+        activeDongle.StopDeviceScanning();
+        Console.WriteLine("Manually stopped scanning for BT devices.");
     }
 
     static async Task PairWithDevice(int deviceIndexInList)
@@ -125,7 +139,7 @@ internal class Program
         bool success = true;
         try
         {
-            await activeDongle.PairAndConnectTo(scanEntries[deviceIndexInList]);// , TimeSpan.FromSeconds(30));
+            await activeDongle.PairAndConnectTo(scanEntries[deviceIndexInList], TimeSpan.FromSeconds(30));
         } catch (Exception ex)
         {
             // Exceptions can happen for example for third party headsets at the moment. They connect correctly to BT audio but don't 
@@ -168,7 +182,7 @@ internal class Program
             // This sample is supported for Jabra Link 380 and Jabra Link 390 BT dongles
             if ((device.Name == "Jabra Link 380") || (device.Name == "Jabra Link 390"))
             {
-                if (await btPairingFactory.CreateBluetoothDongle(device) is IBluetoothDongle dongle)
+                if (await btModule.CreateBluetoothDongle(device) is IBluetoothDongle dongle)
                 {
                     // IDevice device is a dongle...
                     activeDongle = dongle;
@@ -212,19 +226,23 @@ internal class Program
                 break;
             
             default:
-                // if keypress was between 'a' and 'z', treat it as pairing to one of the listed devices. 'a' is ascii 97. 
-                if ((((int)keyChar) > 96) && (((int)keyChar) < 123))
+                // if keypress was between 'a' and 'j', treat it as pairing to one of the listed devices. 'a' is ascii 97. 
+                if ((((int)keyChar) > 96) && (((int)keyChar) < 107))
                 {
-                    if (keypress_a_to_z_means_pairing)
+                    if (keypress_a_to_j_means_pairing)
                     {
                         PairWithDevice((int)keyChar - 97);
                     }
                     else
                     {
                         Connect_Disconnect((int)keyChar - 97); 
-
                     }
 
+                }
+                // If keypress was 'q': Stop scanning for available BT devices
+                if (((int)keyChar) == 113)
+                {
+                    StopScanning();
                 }
                 break;
         }

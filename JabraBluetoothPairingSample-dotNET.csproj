@@ -10,8 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Jabra.NET.Sdk" Version="4.8.1" />
-    <PackageReference Include="Jabra.NET.Sdk.BluetoothPairing" Version="2.0.4-alpha.1" />
-    <PackageReference Include="Jabra.NET.Sdk.Properties" Version="2.4.3.3" />
+    <PackageReference Include="Jabra.NET.Sdk.DevicePairing" Version="3.0.1.1" />
   </ItemGroup>
 
 </Project>
