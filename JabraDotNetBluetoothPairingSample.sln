@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.8.34330.188
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JabraBluetoothPairingSample-dotNET", "JabraBluetoothPairingSample-dotNET.csproj", "{4135484D-7514-45CA-B118-B6FF139383A1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "JabraDotNetBluetoothPairingSample", "JabraDotNetBluetoothPairingSample.csproj", "{4135484D-7514-45CA-B118-B6FF139383A1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

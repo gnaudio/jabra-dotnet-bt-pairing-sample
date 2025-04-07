@@ -70,9 +70,11 @@ internal class Program
 
     static async Task RemoveAllPairingsAsync()
     {
+        // Get list of all existing paired devices
         IReadOnlyList<IPairingListEntry> pairingList = await activeDongle.GetPairingList();
         bool success = true;
         Console.WriteLine($"Trying to remove all pairings for {activeDongle.Name}");
+        // Going through each entry in the paring list to first disconnect (if currently connected) and then unpairing device. 
         foreach (var entry in pairingList)
         {
             try
@@ -83,14 +85,15 @@ internal class Program
                     // Disconnect from device, if connection status is not NONE or DISCONNECTED. 
                     await activeDongle.DisconnectFrom(entry);
                 }
+                // Unpair device from dongle
                 await activeDongle.Unpair(entry);
-                Console.WriteLine($"> Successfully removed {entry.BluetoothName}");
+                Console.WriteLine($"> Successfully removed pairing for {entry.BluetoothName}");
             }
             catch (Exception ex)
             {
                 // An exception happened while trying to unpair. One common reason is if the dongle is
                 // currently connected to the device you're trying to unpair. To avoid this, always disconnect
-                // before attempting to unpair. 
+                // before attempting to unpair (as shown above). 
                 Console.WriteLine($"Exception while removing pairing: {ex.Message}");
                 success = false;
             }
@@ -102,15 +105,16 @@ internal class Program
 
     static async Task StartBTPairingProcess()
     {
-        // Keypress a to z in demo app switches to initiate pairing of selected device
+        // Keypress a to z in demo app switches to initiate pairing of selected device instead of meaning connect/disconnect device from last pairing list. 
         keypress_a_to_j_means_pairing = true;
         
-        // Init scanEntries
+        // Init scanEntries list
         scanEntries = [];
         
         // Scan for BT devices in pairing mode nearby for 30 seconds. Scan will stop also once a pairing is initiated. 
         activeDongle.ScanForDevicesInPairingMode(TimeSpan.FromSeconds(30)).Subscribe(entry =>
         {
+            // For each BT device in pairing mode found nearby, this code will get run. We add each device to the scanEntries list. 
             Console.WriteLine($"> Found device {entry.BluetoothName} - to pair press key '{(char)(scanEntries.Count + 97)}'");
             scanEntries.Add(entry);
         }, error =>
@@ -128,7 +132,7 @@ internal class Program
     static async Task StopScanning()
     {
         activeDongle.StopDeviceScanning();
-        Console.WriteLine("Manually stopped scanning for BT devices.");
+        Console.WriteLine("Manually stopped scanning for BT devices in pairing mode.");
     }
 
     static async Task PairWithDevice(int deviceIndexInList)
@@ -142,21 +146,22 @@ internal class Program
             await activeDongle.PairAndConnectTo(scanEntries[deviceIndexInList], TimeSpan.FromSeconds(30));
         } catch (Exception ex)
         {
-            // Exceptions can happen for example for third party headsets at the moment. They connect correctly to BT audio but don't 
-            // connect to Jabra proprietary protocol(s), hence are hanging. Will be fixed with future update to SDK. 
+            // Exceptions might happen in certain edge cases. Likely the device was still connected, though something went wrong in the process. 
             Console.WriteLine($"Exception during pairing: {ex.Message}");
             success = false; 
         }
-        // if (!success) { activeDongle.ConnectTo(scanEntries[deviceIndexInList].BluetoothAddress);  }
         Console.WriteLine($"Pairing successfull within timeout: {success}");
+        // List out all devices now paired to validate that pairing worked. 
         ListAllPairingsAsync();
     }
 
     static async Task Connect_Disconnect(int deviceIndexInList)
     {
+        // Check connection status to determine whether to attempt to connect or to disconnect.
         if ((pairingList[deviceIndexInList].ConnectionStatus == BluetoothConnectionStatus.CONNECTED) || (pairingList[deviceIndexInList].ConnectionStatus == BluetoothConnectionStatus.NONE))
         {
             Console.WriteLine($"Disconnecting from {pairingList[deviceIndexInList].BluetoothName}");
+            // Disconnect from selected device from the pairing list. 
             await activeDongle.DisconnectFrom(pairingList[deviceIndexInList]);
             await ListAllPairingsAsync();
         } else
@@ -164,6 +169,7 @@ internal class Program
             Console.WriteLine($"Connecting to {pairingList[deviceIndexInList].BluetoothName}");
             try
             {
+                // Connect to selected device from the pairing list
                 await activeDongle.ConnectTo(pairingList[deviceIndexInList],TimeSpan.FromSeconds(15));
             } catch (Exception ex)
             {
@@ -226,7 +232,7 @@ internal class Program
                 break;
             
             default:
-                // if keypress was between 'a' and 'j', treat it as pairing to one of the listed devices. 'a' is ascii 97. 
+                // if keypress was between 'a' and 'j', treat it as pairing or connect/disconnect to one of the listed devices. 'a' is ascii 97. 
                 if ((((int)keyChar) > 96) && (((int)keyChar) < 107))
                 {
                     if (keypress_a_to_j_means_pairing)
