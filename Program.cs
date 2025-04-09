@@ -50,7 +50,7 @@ internal class Program
         Console.WriteLine("Now listening for Jabra devices...\n");
 
         //Keep the sample app running until actively closed.
-        Task.Delay(-1).Wait();
+        await Task.Delay(-1);
     }
 
     static async Task ListAllPairingsAsync()
@@ -228,17 +228,15 @@ internal class Program
             // This sample is supported for Jabra Link 380 and Jabra Link 390 BT dongles
             if ((device.Name == "Jabra Link 380") || (device.Name == "Jabra Link 390"))
             {
-#pragma warning disable CS8602 // Dereference of a possibly null reference. At this point we know that we have instantiated the btModule, so there is no need to check for this.
-                if (await btModule.CreateBluetoothDongle(device) is IBluetoothDongle dongle)
+                // This is the programmatic way to check if an IDevice is a dongle. Above hardcoded names are just for this sample app. 
+                if ((btModule is not null) && (await btModule.CreateBluetoothDongle(device) is IBluetoothDongle dongle))
                 {
                     // IDevice device is a dongle...
                     activeDongle = dongle;
                     Console.WriteLine($"Found Jabra BT dongle: {dongle.Name}");
                     await ListAllPairingsAsync();
                 }
-#pragma warning restore CS8602 // Dereference of a possibly null reference.
             }
-            
         });
         
         // Subscribe to Jabra devices being removed/detached
@@ -288,7 +286,7 @@ internal class Program
             
             default:
                 // if keypress was between 'a' and 'j', treat it as pairing or connect/disconnect to one of the listed devices. 'a' is ascii 97. 
-                if ((((int)keyChar) > 96) && (((int)keyChar) < 107))
+                if ((keyChar >= 'a') &&  (keyChar <= 'j'))
                 {
                     if (keypress_a_to_j_means_pairing)
                     {
